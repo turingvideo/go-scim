@@ -93,7 +93,8 @@ func (s *groupSyncSender) Send(group *prop.Resource, diff *groupsync.Diff) {
 		return
 	}
 
-	messageId := uuid.NewV4().String()
+	u, _ := uuid.NewV4()
+	messageId := u.String()
 	s.logger.Info().Fields(map[string]interface{}{
 		"messageId": messageId,
 		"groupId":   group.IdOrEmpty(),

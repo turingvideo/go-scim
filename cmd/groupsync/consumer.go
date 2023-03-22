@@ -192,7 +192,8 @@ func (c *consumer) retry(message *job.Message) {
 }
 
 func (c *consumer) send(message *job.Message) {
-	messageId := uuid.NewV4().String()
+	u, _ := uuid.NewV4()
+	messageId := u.String()
 
 	raw, err := json.Marshal(message)
 	if err != nil {
