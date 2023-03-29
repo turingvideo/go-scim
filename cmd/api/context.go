@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-type applicationContext struct {
+type ApplicationContext struct {
 	args                      *arguments
 	logger                    *zerolog.Logger
 	serviceProviderConfig     *spec.ServiceProviderConfig
@@ -44,7 +44,38 @@ type applicationContext struct {
 	groupQueryService         service.Query
 }
 
-func (ctx *applicationContext) Logger() *zerolog.Logger {
+type ConfigPath struct {
+	// Path to the service provider config JSON file
+	ServiceProviderConfigPath string
+	// Path to the user resource type JSON file
+	UserResourceTypePath string
+	// Path to the group resource type JSON file
+	GroupResourceTypePath string
+	// Path to the directory containing all schema JSON file
+	SchemasDirectory string
+}
+
+func NewApplicationContext(configPath ConfigPath) *ApplicationContext {
+	arg := newArgs()
+	arg.ServiceProviderConfigPath = configPath.ServiceProviderConfigPath
+	arg.UserResourceTypePath = configPath.UserResourceTypePath
+	arg.GroupResourceTypePath = configPath.GroupResourceTypePath
+	arg.SchemasDirectory = configPath.SchemasDirectory
+
+	app := &ApplicationContext{args: arg}
+	app.ensureSchemaRegistered()
+	return app
+}
+
+func (ctx *ApplicationContext) SetUserDatabase(db db.DB) {
+	ctx.userDatabase = db
+}
+
+func (ctx *ApplicationContext) SetGroupDatabase(db db.DB) {
+	ctx.groupDatabase = db
+}
+
+func (ctx *ApplicationContext) Logger() *zerolog.Logger {
 	if ctx.logger == nil {
 		ctx.logger = ctx.args.Logger()
 		ctx.logger.Info().Msg("logger initialized")
@@ -52,7 +83,7 @@ func (ctx *applicationContext) Logger() *zerolog.Logger {
 	return ctx.logger
 }
 
-func (ctx *applicationContext) ServiceProviderConfig() *spec.ServiceProviderConfig {
+func (ctx *ApplicationContext) ServiceProviderConfig() *spec.ServiceProviderConfig {
 	if ctx.serviceProviderConfig == nil {
 		spc, err := ctx.args.ParseServiceProviderConfig()
 		if err != nil {
@@ -65,7 +96,7 @@ func (ctx *applicationContext) ServiceProviderConfig() *spec.ServiceProviderConf
 	return ctx.serviceProviderConfig
 }
 
-func (ctx *applicationContext) UserResourceType() *spec.ResourceType {
+func (ctx *ApplicationContext) UserResourceType() *spec.ResourceType {
 	ctx.ensureSchemaRegistered()
 	if ctx.userResourceType == nil {
 		u, err := ctx.args.ParseUserResourceType()
@@ -80,7 +111,7 @@ func (ctx *applicationContext) UserResourceType() *spec.ResourceType {
 	return ctx.userResourceType
 }
 
-func (ctx *applicationContext) GroupResourceType() *spec.ResourceType {
+func (ctx *ApplicationContext) GroupResourceType() *spec.ResourceType {
 	ctx.ensureSchemaRegistered()
 	if ctx.groupResourceType == nil {
 		g, err := ctx.args.ParseGroupResourceType()
@@ -95,7 +126,7 @@ func (ctx *applicationContext) GroupResourceType() *spec.ResourceType {
 	return ctx.groupResourceType
 }
 
-func (ctx *applicationContext) ensureSchemaRegistered() {
+func (ctx *ApplicationContext) ensureSchemaRegistered() {
 	ctx.registerSchemaOnce.Do(func() {
 		if err := ctx.args.RegisterSchemas(); err != nil {
 			ctx.logInitFailure("schema", err)
@@ -105,7 +136,7 @@ func (ctx *applicationContext) ensureSchemaRegistered() {
 	})
 }
 
-func (ctx *applicationContext) MongoClient() *mongo.Client {
+func (ctx *ApplicationContext) MongoClient() *mongo.Client {
 	if ctx.mongoClient == nil {
 		connectCtx, cancelFunc := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelFunc()
@@ -122,7 +153,7 @@ func (ctx *applicationContext) MongoClient() *mongo.Client {
 	return ctx.mongoClient
 }
 
-func (ctx *applicationContext) UserDatabase() db.DB {
+func (ctx *ApplicationContext) UserDatabase() db.DB {
 	if ctx.userDatabase == nil {
 		if ctx.args.UseMemoryDB {
 			ctx.userDatabase = db.Memory()
@@ -140,7 +171,7 @@ func (ctx *applicationContext) UserDatabase() db.DB {
 	return ctx.userDatabase
 }
 
-func (ctx *applicationContext) GroupDatabase() db.DB {
+func (ctx *ApplicationContext) GroupDatabase() db.DB {
 	if ctx.groupDatabase == nil {
 		if ctx.args.UseMemoryDB {
 			ctx.groupDatabase = db.Memory()
@@ -158,7 +189,7 @@ func (ctx *applicationContext) GroupDatabase() db.DB {
 	return ctx.groupDatabase
 }
 
-func (ctx *applicationContext) ensureMongoMetadata() {
+func (ctx *ApplicationContext) ensureMongoMetadata() {
 	ctx.registerMongoMetadataOnce.Do(func() {
 		if err := ctx.args.MongoDB.RegisterMetadata(); err != nil {
 			ctx.logInitFailure("mongo metadata", err)
@@ -168,7 +199,7 @@ func (ctx *applicationContext) ensureMongoMetadata() {
 	})
 }
 
-func (ctx *applicationContext) UserCreateService() service.Create {
+func (ctx *ApplicationContext) UserCreateService() service.Create {
 	if ctx.userCreateService == nil {
 		ctx.userCreateService = service.CreateService(ctx.UserResourceType(), ctx.UserDatabase(), []filter.ByResource{
 			filter.ByPropertyToByResource(
@@ -184,7 +215,7 @@ func (ctx *applicationContext) UserCreateService() service.Create {
 	return ctx.userCreateService
 }
 
-func (ctx *applicationContext) GroupCreateService() service.Create {
+func (ctx *ApplicationContext) GroupCreateService() service.Create {
 	if ctx.groupCreateService == nil {
 		ctx.groupCreateService = &groupCreated{
 			service: service.CreateService(ctx.GroupResourceType(), ctx.GroupDatabase(), []filter.ByResource{
@@ -205,7 +236,7 @@ func (ctx *applicationContext) GroupCreateService() service.Create {
 	return ctx.groupCreateService
 }
 
-func (ctx *applicationContext) UserReplaceService() service.Replace {
+func (ctx *ApplicationContext) UserReplaceService() service.Replace {
 	if ctx.userReplaceService == nil {
 		ctx.userReplaceService = service.ReplaceService(ctx.ServiceProviderConfig(), ctx.UserResourceType(), ctx.UserDatabase(), []filter.ByResource{
 			filter.ByPropertyToByResource(
@@ -220,7 +251,7 @@ func (ctx *applicationContext) UserReplaceService() service.Replace {
 	return ctx.userReplaceService
 }
 
-func (ctx *applicationContext) GroupReplaceService() service.Replace {
+func (ctx *ApplicationContext) GroupReplaceService() service.Replace {
 	if ctx.groupReplaceService == nil {
 		ctx.groupReplaceService = &groupReplaced{
 			service: service.ReplaceService(ctx.ServiceProviderConfig(), ctx.GroupResourceType(), ctx.GroupDatabase(), []filter.ByResource{
@@ -240,7 +271,7 @@ func (ctx *applicationContext) GroupReplaceService() service.Replace {
 	return ctx.groupReplaceService
 }
 
-func (ctx *applicationContext) UserPatchService() service.Patch {
+func (ctx *ApplicationContext) UserPatchService() service.Patch {
 	if ctx.userPatchService == nil {
 		ctx.userPatchService = service.PatchService(ctx.ServiceProviderConfig(), ctx.UserDatabase(), []filter.ByResource{}, []filter.ByResource{
 			filter.ByPropertyToByResource(
@@ -255,7 +286,7 @@ func (ctx *applicationContext) UserPatchService() service.Patch {
 	return ctx.userPatchService
 }
 
-func (ctx *applicationContext) GroupPatchService() service.Patch {
+func (ctx *ApplicationContext) GroupPatchService() service.Patch {
 	if ctx.groupPatchService == nil {
 		ctx.groupPatchService = &groupPatched{
 			service: service.PatchService(ctx.ServiceProviderConfig(), ctx.GroupDatabase(), []filter.ByResource{}, []filter.ByResource{
@@ -275,7 +306,7 @@ func (ctx *applicationContext) GroupPatchService() service.Patch {
 	return ctx.groupPatchService
 }
 
-func (ctx *applicationContext) UserDeleteService() service.Delete {
+func (ctx *ApplicationContext) UserDeleteService() service.Delete {
 	if ctx.userDeleteService == nil {
 		ctx.userDeleteService = service.DeleteService(ctx.ServiceProviderConfig(), ctx.UserDatabase())
 		ctx.logInitialized("user delete service")
@@ -283,7 +314,7 @@ func (ctx *applicationContext) UserDeleteService() service.Delete {
 	return ctx.userDeleteService
 }
 
-func (ctx *applicationContext) GroupDeleteService() service.Delete {
+func (ctx *ApplicationContext) GroupDeleteService() service.Delete {
 	if ctx.groupDeleteService == nil {
 		ctx.groupDeleteService = &groupDeleted{
 			service: service.DeleteService(ctx.ServiceProviderConfig(), ctx.GroupDatabase()),
@@ -297,7 +328,7 @@ func (ctx *applicationContext) GroupDeleteService() service.Delete {
 	return ctx.groupDeleteService
 }
 
-func (ctx *applicationContext) UserGetService() service.Get {
+func (ctx *ApplicationContext) UserGetService() service.Get {
 	if ctx.userGetService == nil {
 		ctx.userGetService = service.GetService(ctx.UserDatabase())
 		ctx.logInitialized("user get service")
@@ -305,7 +336,7 @@ func (ctx *applicationContext) UserGetService() service.Get {
 	return ctx.userGetService
 }
 
-func (ctx *applicationContext) GroupGetService() service.Get {
+func (ctx *ApplicationContext) GroupGetService() service.Get {
 	if ctx.groupGetService == nil {
 		ctx.groupGetService = service.GetService(ctx.GroupDatabase())
 		ctx.logInitialized("group get service")
@@ -313,7 +344,7 @@ func (ctx *applicationContext) GroupGetService() service.Get {
 	return ctx.groupGetService
 }
 
-func (ctx *applicationContext) UserQueryService() service.Query {
+func (ctx *ApplicationContext) UserQueryService() service.Query {
 	if ctx.userQueryService == nil {
 		ctx.userQueryService = service.QueryService(ctx.ServiceProviderConfig(), ctx.UserDatabase())
 		ctx.logInitialized("user query service")
@@ -321,7 +352,7 @@ func (ctx *applicationContext) UserQueryService() service.Query {
 	return ctx.userQueryService
 }
 
-func (ctx *applicationContext) GroupQueryService() service.Query {
+func (ctx *ApplicationContext) GroupQueryService() service.Query {
 	if ctx.groupQueryService == nil {
 		ctx.groupQueryService = service.QueryService(ctx.ServiceProviderConfig(), ctx.GroupDatabase())
 		ctx.logInitialized("group query service")
@@ -329,7 +360,7 @@ func (ctx *applicationContext) GroupQueryService() service.Query {
 	return ctx.groupQueryService
 }
 
-func (ctx *applicationContext) RabbitMQConnection() *amqp.Connection {
+func (ctx *ApplicationContext) RabbitMQConnection() *amqp.Connection {
 	if ctx.rabbitMqConn == nil {
 		connectCtx, cancelFunc := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelFunc()
@@ -345,7 +376,7 @@ func (ctx *applicationContext) RabbitMQConnection() *amqp.Connection {
 	return ctx.rabbitMqConn
 }
 
-func (ctx *applicationContext) RabbitMQChannel() *amqp.Channel {
+func (ctx *ApplicationContext) RabbitMQChannel() *amqp.Channel {
 	if ctx.rabbitMqChannel == nil {
 		c, err := ctx.RabbitMQConnection().Channel()
 		if err != nil {
@@ -362,7 +393,7 @@ func (ctx *applicationContext) RabbitMQChannel() *amqp.Channel {
 	return ctx.rabbitMqChannel
 }
 
-func (ctx *applicationContext) Close() {
+func (ctx *ApplicationContext) Close() {
 	if ctx.mongoClient != nil {
 		_ = ctx.mongoClient.Disconnect(context.Background())
 	}
@@ -371,7 +402,7 @@ func (ctx *applicationContext) Close() {
 	}
 }
 
-func (ctx *applicationContext) logInitialized(resourceName string) {
+func (ctx *ApplicationContext) logInitialized(resourceName string) {
 	ctx.Logger().
 		Info().
 		Fields(map[string]interface{}{
@@ -381,7 +412,7 @@ func (ctx *applicationContext) logInitialized(resourceName string) {
 		Msg("component initialized")
 }
 
-func (ctx *applicationContext) logInitFailure(resourceName string, err error) {
+func (ctx *ApplicationContext) logInitFailure(resourceName string, err error) {
 	ctx.Logger().
 		Fatal().
 		Err(err).

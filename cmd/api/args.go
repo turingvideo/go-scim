@@ -43,6 +43,6 @@ func (arg *arguments) Flags() []cli.Flag {
 	return flags
 }
 
-func (arg *arguments) Initialize() *applicationContext {
-	return &applicationContext{args: arg}
+func (arg *arguments) Initialize() *ApplicationContext {
+	return &ApplicationContext{args: arg}
 }
