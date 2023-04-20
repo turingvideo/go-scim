@@ -122,7 +122,10 @@ func (s *patchService) Do(ctx context.Context, req *PatchRequest) (resp *PatchRe
 			}
 		case "remove":
 			if err := crud.Delete(resource, patchOp.Path); err != nil {
-				return nil, err
+				if strings.Contains(err.Error(), "members") {
+				} else {
+					return nil, err
+				}
 			}
 		}
 	}
