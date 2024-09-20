@@ -117,7 +117,7 @@ func (s *patchService) Do(ctx context.Context, req *PatchRequest) (resp *PatchRe
 		case "replace":
 			// Compatible with AD SCIM value sub-attribute
 			if len(patchOp.Path) == 0 && len(patchOp.Value) > 0 {
-				patchOp.Value, err = dealValueSubAttr(patchOp.Value)
+				patchOp.Value, err = dealValueSubAttr(patchOp.Value, []string{"name"})
 				if err != nil {
 					return nil, err
 				}
@@ -167,7 +167,11 @@ func (s *patchService) Do(ctx context.Context, req *PatchRequest) (resp *PatchRe
 	return
 }
 
-func dealValueSubAttr(raw json.RawMessage) (json.RawMessage, error) {
+func dealValueSubAttr(raw json.RawMessage, prefix []string) (json.RawMessage, error) {
+	prefixM := make(map[string]struct{})
+	for _, v := range prefix {
+		prefixM[v] = struct{}{}
+	}
 	var input map[string]interface{}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return nil, err
@@ -176,14 +180,16 @@ func dealValueSubAttr(raw json.RawMessage) (json.RawMessage, error) {
 	for key, value := range input {
 		if strings.Contains(key, ".") {
 			parts := strings.SplitN(key, ".", 2)
-			if _, ok := result[parts[0]]; !ok {
-				result[parts[0]] = make(map[string]interface{})
+			if _, ok := prefixM[parts[0]]; ok {
+				if _, ok := result[parts[0]]; !ok {
+					result[parts[0]] = make(map[string]interface{})
+				}
+				subMap, _ := result[parts[0]].(map[string]interface{})
+				subMap[parts[1]] = value
+				continue
 			}
-			subMap, _ := result[parts[0]].(map[string]interface{})
-			subMap[parts[1]] = value
-		} else {
-			result[key] = value
 		}
+		result[key] = value
 	}
 	return json.Marshal(result)
 }
