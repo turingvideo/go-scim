@@ -393,3 +393,19 @@ func (s *PatchServiceTestSuite) SetupSuite() {
 }
 `), s.config))
 }
+
+func Test_dealValueSubAttr(t *testing.T) {
+	t.Run("not exist name sub attribute", func(t *testing.T) {
+		raw := json.RawMessage(`{"active":true,"displayName":"Bjfe"}`)
+		res, err := dealValueSubAttr(raw, []string{"name"})
+		assert.Nil(t, err)
+		assert.Equal(t, string(raw), string(res))
+	})
+	t.Run("exist name sub attribute", func(t *testing.T) {
+		raw := json.RawMessage(`{"displayName":"Bjfe","name.familyName":"Unua","name.givenName":"Kkom"}`)
+		res, err := dealValueSubAttr(raw, []string{"name"})
+		assert.Nil(t, err)
+		expected := json.RawMessage(`{"displayName":"Bjfe","name":{"familyName":"Unua","givenName":"Kkom"}}`)
+		assert.Equal(t, string(expected), string(res))
+	})
+}
