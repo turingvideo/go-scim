@@ -394,18 +394,26 @@ func (s *PatchServiceTestSuite) SetupSuite() {
 `), s.config))
 }
 
-func Test_dealValueSubAttr(t *testing.T) {
-	t.Run("not exist name sub attribute", func(t *testing.T) {
-		raw := json.RawMessage(`{"active":true,"displayName":"Bjfe"}`)
-		res, err := dealValueSubAttr(raw, []string{"name"})
+func Test_dealMultiValueSubAttr(t *testing.T) {
+	t.Run("not exist", func(t *testing.T) {
+		raw := json.RawMessage(`{"emails":[{"value":"aa@com"}],"name":{"givenName":"aa"},"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User":{"department":"School"}}`)
+		res, err := dealMultiValueSubAttr(raw, map[string]string{"name": ".", "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User": ":"})
 		assert.Nil(t, err)
 		assert.Equal(t, string(raw), string(res))
 	})
 	t.Run("exist name sub attribute", func(t *testing.T) {
 		raw := json.RawMessage(`{"displayName":"Bjfe","name.familyName":"Unua","name.givenName":"Kkom"}`)
-		res, err := dealValueSubAttr(raw, []string{"name"})
+		res, err := dealMultiValueSubAttr(raw, map[string]string{"name": ".", "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User": ":"})
 		assert.Nil(t, err)
 		expected := json.RawMessage(`{"displayName":"Bjfe","name":{"familyName":"Unua","givenName":"Kkom"}}`)
+		assert.Equal(t, string(expected), string(res))
+	})
+	t.Run("exist enterprise user sub attribute", func(t *testing.T) {
+		//"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department": "South View High School"
+		raw := json.RawMessage(`{"active":false,"title":"Guidance Counselor","urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department":"South View High School"}`)
+		res, err := dealMultiValueSubAttr(raw, map[string]string{"name": ".", "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User": ":"})
+		assert.Nil(t, err)
+		expected := json.RawMessage(`{"active":false,"title":"Guidance Counselor","urn:ietf:params:scim:schemas:extension:enterprise:2.0:User":{"department":"South View High School"}}`)
 		assert.Equal(t, string(expected), string(res))
 	})
 }
