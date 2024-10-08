@@ -115,13 +115,25 @@ func (s *patchService) Do(ctx context.Context, req *PatchRequest) (resp *PatchRe
 				return nil, err
 			}
 		case "replace":
-			// Compatible with AD SCIM value sub-attribute
+
+			/* Compatible with AD SCIM multi-value modification sub-attributes, like:
+			{
+				"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+				"Operations": [{
+					"op": "replace",
+					"value": {
+						"name.familyName": "Bryant",
+						"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department": "South View High School"
+					}
+				}]
+			} */
 			if len(patchOp.Path) == 0 && len(patchOp.Value) > 0 {
-				patchOp.Value, err = dealValueSubAttr(patchOp.Value, []string{"name"})
+				patchOp.Value, err = dealMultiValueSubAttr(patchOp.Value, map[string]string{"name": ".", "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User": ":"})
 				if err != nil {
 					return nil, err
 				}
 			}
+
 			if valueToReplace, err := patchOp.ParseValue(resource); err != nil {
 				return nil, err
 			} else if err := crud.Replace(resource, patchOp.Path, valueToReplace); err != nil {
@@ -167,26 +179,23 @@ func (s *patchService) Do(ctx context.Context, req *PatchRequest) (resp *PatchRe
 	return
 }
 
-func dealValueSubAttr(raw json.RawMessage, prefix []string) (json.RawMessage, error) {
-	prefixM := make(map[string]struct{})
-	for _, v := range prefix {
-		prefixM[v] = struct{}{}
-	}
+func dealMultiValueSubAttr(raw json.RawMessage, prefixMap map[string]string) (json.RawMessage, error) {
 	var input map[string]interface{}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return nil, err
 	}
 	result := make(map[string]interface{})
+outerLoop:
 	for key, value := range input {
-		if strings.Contains(key, ".") {
-			parts := strings.SplitN(key, ".", 2)
-			if _, ok := prefixM[parts[0]]; ok {
-				if _, ok := result[parts[0]]; !ok {
-					result[parts[0]] = make(map[string]interface{})
+		for prefix, sep := range prefixMap {
+			if strings.HasPrefix(key, prefix+sep) {
+				if _, ok := result[prefix]; !ok {
+					result[prefix] = make(map[string]interface{})
 				}
-				subMap, _ := result[parts[0]].(map[string]interface{})
-				subMap[parts[1]] = value
-				continue
+				subMap, _ := result[prefix].(map[string]interface{})
+				remaining := strings.TrimPrefix(key, prefix+sep)
+				subMap[remaining] = value
+				continue outerLoop
 			}
 		}
 		result[key] = value
